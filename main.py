@@ -27,7 +27,7 @@ def convert_to_grayscale(image):
 
 def gaussian_smoothing(image, kernel_size, sigma):
     # Create gaussian kernel
-    assert kernel_size, "Kernel size is not odd number"
+    assert kernel_size % 2 == 1, "Kernel size is not odd number"
     mid = kernel_size // 2
     x, y = np.meshgrid(np.arange(-mid, mid+1), np.arange(-mid, mid+1))
     kernel = np.exp(-(x**2 + y**2) / (2 * sigma**2))
@@ -62,12 +62,8 @@ def load_preprocessed_images(path):
     images_np = []
     for filename in sorted(os.listdir(path)):
         file_path = os.path.join(path, filename)
-        # if os.path.isfile(file_path) and filename.lower().endswith((".png", ".jpg", ".jpeg")):
-        #     img = Image.open(file_path).convert("L")
-        #     images.append(np.array(img))
         if os.path.isfile(file_path) and filename.lower().endswith((".npy")):
             npy = np.load(file_path)
-            #npy = Image.fromarray(npy)
             images_np.append(npy)
 
     print(len(images_np), "Preprosecced images loaded")
@@ -441,12 +437,17 @@ def stitch_images(images, homographies):
         y_start = offset_y - min_y
         x_end = x_start + w
         y_end = y_start + h
+        center_y, center_x = h // 2, w // 2
 
         for wy in range(h):
             for wx in range(w):
                 if warped_image[wy, wx].any():
+                    distance = np.sqrt((wy - center_y) ** 2 + (wx - center_x) ** 2)
+                    max_distance = np.sqrt(center_y ** 2 + center_x ** 2)
+                    weight = 1 - (distance / max_distance)
+
                     if output[y_start + wy, x_start + wx].any():
-                        output[y_start + wy, x_start + wx] = (output[y_start + wy, x_start + wx] + warped_image[wy, wx]) / 2
+                        output[y_start + wy, x_start + wx] = output[y_start + wy, x_start + wx] * (1 - weight) + warped_image[wy, wx] * weight
                     else:
                         output[y_start + wy, x_start + wx] = warped_image[wy, wx]
 
@@ -457,7 +458,7 @@ def save_stitching(image_array, save_path, filename):
     np.save(os.path.join(save_path, filename), image_array)
     image_array = cv2.cvtColor(image_array.astype(np.uint8), cv2.COLOR_BGR2RGB)
     image_array = Image.fromarray(image_array, 'RGB')
-    image_array.save(cache_path + "/5. stitching/" + filename + ".jpg")
+    image_array.save(os.path.join(save_path, filename) + ".jpg")
 
 def group_adjustment(global_homographies):
     
@@ -488,15 +489,15 @@ def remove_cache(path_list):
         for filename in os.listdir(full_path):
             os.remove(full_path + filename)
 
-test_mode = [#"1. preprosess",
-             #"2. feature",
-             #"3. matching",
+test_mode = ["1. preprosess",
+             "2. feature",
+             "3. matching",
              "4. homography",
              "5. stitching"
              ]
 remove_cache(test_mode)
 cache_path = "./cache"
-samples_path = "./samples"
+samples_path = "./"
 images = load_images(samples_path)
 #~~~~~~~~~~run preprosess~~~~~~~~~~#
 if "1. preprosess" in test_mode:
@@ -589,6 +590,6 @@ if "4. homography" not in test_mode:
 print("*****Starting stitching*****")
 
 stitched = stitch_images(images, homographies)
-save_stitching(stitched, "./cache/5. stitching", "stitching")
+save_stitching(stitched, cache_path + "/5. stitching/", "result")
 
 print("*****Stitching complete*****\n")
